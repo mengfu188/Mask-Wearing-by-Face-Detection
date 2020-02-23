@@ -1,10 +1,10 @@
 """
- __  __           _     __        __              _             
-|  \/  | __ _ ___| | __ \ \      / /__  __ _ _ __(_)_ __   __ _ 
+ __  __           _     __        __              _
+|  \/  | __ _ ___| | __ \ \      / /__  __ _ _ __(_)_ __   __ _
 | |\/| |/ _` / __| |/ /  \ \ /\ / / _ \/ _` | '__| | '_ \ / _` |
 | |  | | (_| \__ \   <    \ V  V /  __/ (_| | |  | | | | | (_| |
 |_|  |_|\__,_|___/_|\_\    \_/\_/ \___|\__,_|_|  |_|_| |_|\__, |
-                                                          |___/ 
+                                                          |___/
 
 @author: Jonathan Wang
 @coding: utf-8
@@ -22,7 +22,6 @@ import matplotlib.pyplot as plt
 
 from pathlib import Path
 from tqdm import tqdm
-import pandas as pd
 
 
 def get_args():
@@ -134,20 +133,34 @@ def wear_item(mask, img):
 
     item_img = cv.resize(item_img, size)
     alpha_channel = item_img[:, :, 3]
-    _, mask = cv.threshold(alpha_channel, 220, 255, cv.THRESH_BINARY)
     color = item_img[:, :, :3]
-    item_img = cv.bitwise_not(cv.bitwise_not(color, mask=mask))
-
     rows, cols, channels = item_img.shape
     roi = img[y_min: y_min + rows, x_min:x_min + cols]
-    img_gray = cv.cvtColor(item_img, cv.COLOR_BGR2GRAY)
-    ret, mask = cv.threshold(img_gray, 254, 255, cv.THRESH_BINARY)
-    mask = np.uint8(mask)
-    mask_inv = cv.bitwise_not(mask)
-    img_bg = cv.bitwise_and(roi, roi, mask=mask)
-    item_img_fg = cv.bitwise_and(item_img, item_img, mask=mask_inv)
-    dst = cv.add(img_bg, item_img_fg)
-    img[y_min: y_min + rows, x_min:x_min + cols] = dst
+
+    _, mask1 = cv.threshold(alpha_channel, 220, 255, cv.THRESH_BINARY)
+
+    img_gray = cv.cvtColor(item_img, cv.COLOR_BGRA2GRAY)
+
+    ret, ma1 = cv.threshold(img_gray, 170, 255, cv.THRESH_BINARY)
+    fg1 = cv.bitwise_and(roi, roi, mask=ma1)
+
+    ret, ma2 = cv.threshold(img_gray, 170, 255, cv.THRESH_BINARY_INV)
+    fg2 = cv.bitwise_and(color, color, mask=mask1)
+
+    roi[:] = cv.add(fg1, fg2)
+
+    # alpha_channel = item_img[:, :, 3]
+    # _, mask = cv.threshold(alpha_channel, 220, 255, cv.THRESH_BINARY)
+    # color = item_img[:, :, :3]
+    # item_img = cv.bitwise_not(cv.bitwise_not(color, mask=mask))
+
+    # ret, mask = cv.threshold(img_gray, 254, 255, cv.THRESH_BINARY)
+    # mask = np.uint8(mask)
+    # mask_inv = cv.bitwise_not(mask)
+    # img_bg = cv.bitwise_and(roi, roi, mask=mask)
+    # item_img_fg = cv.bitwise_and(item_img, item_img, mask=mask_inv)
+    # dst = cv.add(img_bg, item_img_fg)
+    # img[y_min: y_min + rows, x_min:x_min + cols] = dst
 
 
 if __name__ == '__main__':
@@ -162,20 +175,13 @@ if __name__ == '__main__':
     for file in tqdm(files):
         id_stem = file.absolute().parent.stem
         name_stem = file.stem
-        target_dir = target / id_stem
-        target_file = target / id_stem / (name_stem + 'm.jpg')
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
-        if os.path.exists(target_file):
-            print(target_file, ' exists continue')
-            continue
-
         img = cv.imread(str(file))
-        if img is None:
-            print(file, ' broken continue')
-            continue
 
         wear_item(True, img)
         # print("OK!")
 
+        target_dir = target / id_stem
+        target_file = target / id_stem / (name_stem + 'm.jpg')
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
         cv.imwrite(str(target_file), img)
