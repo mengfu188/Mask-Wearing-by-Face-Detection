@@ -29,7 +29,10 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source_root')
     parser.add_argument('--target_root')
-    parser.add_argument('--count', type=float, default=100)
+    parser.add_argument('--count', type=float, default=1)
+    parser.add_argument('--wear_prob', type=float, default=1,
+                        help='wear when random.random() < mask_prob')
+    parser.add_argument('--suffix', default='m.jpg')
     return parser.parse_args()
 
 
@@ -163,7 +166,7 @@ if __name__ == '__main__':
         id_stem = file.absolute().parent.stem
         name_stem = file.stem
         target_dir = target / id_stem
-        target_file = target / id_stem / (name_stem + 'm.jpg')
+        target_file = target / id_stem / (name_stem + args.suffix)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
         if os.path.exists(target_file):
@@ -174,8 +177,8 @@ if __name__ == '__main__':
         if img is None:
             print(file, ' broken continue')
             continue
-
-        wear_item(True, img)
+        if random.random() < args.wear_prob:
+            wear_item(True, img)
         # print("OK!")
 
         cv.imwrite(str(target_file), img)
