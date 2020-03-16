@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
 import pandas as pd
+import data
 
 
 def get_args():
@@ -32,7 +33,8 @@ def get_args():
     parser.add_argument('--count', type=float, default=1)
     parser.add_argument('--wear_prob', type=float, default=1,
                         help='wear when random.random() < mask_prob')
-    parser.add_argument('--suffix', default='m.jpg')
+    parser.add_argument('--suffix', default='.jpg')
+    parser.add_argument('--prefix', default='m')
     return parser.parse_args()
 
 
@@ -43,7 +45,7 @@ predictor = dlib.shape_predictor('src/models/shape_predictor_68_face_landmarks.d
 def detect_eye(img):
     img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     faces = detector(img_gray, 0)
-
+    det = []
     for k, d in enumerate(faces):
         x = []
         y = []
@@ -60,15 +62,15 @@ def detect_eye(img):
         x_max = (int)(max(x) + width / 3)
         x_min = (int)(min(x) - width / 3)
         size = ((x_max - x_min), (y_max - y_min))
-
-        return x_min, x_max, y_min, y_max, size
-    return 0, 0, 0, 0, 0
+        det.append([x_min, x_max, y_min, y_max, size])
+    return det
 
 
 def detect_chin(img):
     h, w, d = img.shape
     img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     faces = detector(img_gray, 0)
+    det = []
     for k, d in enumerate(faces):
         x = []
         y = []
@@ -87,15 +89,14 @@ def detect_chin(img):
         x_min = max([x.min(),0])
 
         size = ((x_max - x_min), (y_max - y_min))
-
-        return x_min, x_max, y_min, y_max, size
-    return 0, 0, 0, 0, 0
+        det.append([x_min, x_max, y_min, y_max, size])
+    return det
 
 
 def detect_mouth(img):
     img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     faces = detector(img_gray, 0)
-
+    det = []
     for k, d in enumerate(faces):
         x = []
         y = []
@@ -113,44 +114,49 @@ def detect_mouth(img):
         x_max = (int)(max(x) + width / 3)
         x_min = (int)(min(x) - width / 3)
         size = ((x_max - x_min), (y_max - y_min))
+        det.append([x_min, x_max, y_min, y_max, size])
+    return det
 
-        return x_min, x_max, y_min, y_max, size
-    return 0, 0, 0, 0, 0
 
 
 def wear_item(mask, img):
     # print("Processing...")
 
     if not mask:
-        x_min, x_max, y_min, y_max, size = detect_eye(img)
-        item_img = cv.imread('src/imgs/glasses.png', cv.IMREAD_UNCHANGED)
+        det = detect_eye(img)
+        item_img_ = cv.imread('src/imgs/glasses.png', cv.IMREAD_UNCHANGED)
         #  cv.imshow("Glasses", item_img)
     else:
-        x_min, x_max, y_min, y_max, size = detect_chin(img)
+        det = detect_chin(img)
         which = random.randint(0, 6)
         item_name = 'src/imgs/mask' + str(which) + '.png'
-        item_img = cv.imread(item_name, cv.IMREAD_UNCHANGED)
+        item_img_ = cv.imread(item_name, cv.IMREAD_UNCHANGED)
         #  cv.imshow("Mask", item_img)
 
-    if size == 0:
+    if len(det) == 0:
         return
 
-    item_img = cv.resize(item_img, size)
-    alpha_channel = item_img[:, :, 3]
-    _, mask = cv.threshold(alpha_channel, 220, 255, cv.THRESH_BINARY)
-    color = item_img[:, :, :3]
-    item_img = cv.bitwise_not(cv.bitwise_not(color, mask=mask))
+    for x_min, x_max, y_min, y_max, size in det:
+        # which = random.randint(0, 6)
+        # item_name = 'src/imgs/mask' + str(which) + '.png'
+        # item_img = cv.imread(item_name, cv.IMREAD_UNCHANGED)
+        item_img = data.get_aug_mask()
+        item_img = cv.resize(item_img, size)
+        alpha_channel = item_img[:, :, 3]
+        _, mask = cv.threshold(alpha_channel, 220, 255, cv.THRESH_BINARY)
+        color = item_img[:, :, :3]
+        item_img = cv.bitwise_not(cv.bitwise_not(color, mask=mask))
 
-    rows, cols, channels = item_img.shape
-    roi = img[y_min: y_min + rows, x_min:x_min + cols]
-    img_gray = cv.cvtColor(item_img, cv.COLOR_BGR2GRAY)
-    ret, mask = cv.threshold(img_gray, 254, 255, cv.THRESH_BINARY)
-    mask = np.uint8(mask)
-    mask_inv = cv.bitwise_not(mask)
-    img_bg = cv.bitwise_and(roi, roi, mask=mask)
-    item_img_fg = cv.bitwise_and(item_img, item_img, mask=mask_inv)
-    dst = cv.add(img_bg, item_img_fg)
-    img[y_min: y_min + rows, x_min:x_min + cols] = dst
+        rows, cols, channels = item_img.shape
+        roi = img[y_min: y_min + rows, x_min:x_min + cols]
+        img_gray = cv.cvtColor(item_img, cv.COLOR_BGR2GRAY)
+        ret, mask = cv.threshold(img_gray, 254, 255, cv.THRESH_BINARY)
+        mask = np.uint8(mask)
+        mask_inv = cv.bitwise_not(mask)
+        img_bg = cv.bitwise_and(roi, roi, mask=mask)
+        item_img_fg = cv.bitwise_and(item_img, item_img, mask=mask_inv)
+        dst = cv.add(img_bg, item_img_fg)
+        img[y_min: y_min + rows, x_min:x_min + cols] = dst
 
 
 if __name__ == '__main__':
@@ -166,7 +172,7 @@ if __name__ == '__main__':
         id_stem = file.absolute().parent.stem
         name_stem = file.stem
         target_dir = target / id_stem
-        target_file = target / id_stem / (name_stem + args.suffix)
+        target_file = target / id_stem / (args.prefix + name_stem + args.suffix)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
         if os.path.exists(target_file):
